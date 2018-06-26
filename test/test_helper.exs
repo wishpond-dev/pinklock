@@ -1,8 +1,14 @@
 ExUnit.start()
 
+defmodule Sentinel do
+  def start_link do
+    RedixSentinel.start_link(Application.get_env(:pinklock, :sentinel), [database: 0], [])
+  end
+end
+
 defmodule Redis do
   def start_link do
-    RedixSentinel.start_link(Application.get_env(:pinklock, :redis), [database: 0], [])
+    Redix.start_link(Application.get_env(:pinklock, :redis))
   end
 end
 
