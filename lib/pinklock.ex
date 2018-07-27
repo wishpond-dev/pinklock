@@ -56,16 +56,25 @@ defmodule Pinklock do
             ["GET", lock_key]
           )
 
-        saved_expiry = String.to_integer(res)
+        # If the key was expired between the time we don't get the lock from
+        # the setnx call and when fetching the lock from redis again, this will
+        # be nil. So we shall run it again.
+        case res do
+          nil ->
+            with_lock(sentinel, lock_key, handler)
 
-        if saved_expiry < :os.system_time(:millisecond) do
-          RedixSentinel.command(
-            sentinel,
-            ["DEL", lock_key]
-          )
+          _ ->
+            saved_expiry = String.to_integer(res)
 
-          # Now run again with the same params
-          with_lock(sentinel, lock_key, handler)
+            if saved_expiry < :os.system_time(:millisecond) do
+              RedixSentinel.command(
+                sentinel,
+                ["DEL", lock_key]
+              )
+
+              # Now run again with the same params
+              with_lock(sentinel, lock_key, handler)
+            end
         end
     end
   end
