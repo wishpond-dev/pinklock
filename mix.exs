@@ -4,7 +4,7 @@ defmodule Pinklock.MixProject do
   def project do
     [
       app: :pinklock,
-      version: "0.1.2",
+      version: "1.1.0",
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
       deps: deps()
@@ -21,6 +21,7 @@ defmodule Pinklock.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:redix, ">= 0.0.0"},
       {:redix_sentinel, ">= 0.0.0"},
       {:mix_test_watch, "~> 0.3", only: :dev, runtime: false},
       {:ex_unit_notifier, "~> 0.1", only: :test}

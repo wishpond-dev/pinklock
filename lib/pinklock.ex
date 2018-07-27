@@ -8,15 +8,28 @@ defmodule Pinklock do
   @default_ttl 60
 
   @doc """
-  This should really be private but I want to be able to test it directly so...
-  just don't use it, plskthx.
+  Get a basic redis lock.
 
-  Alternatively I should extract it to something simple that can be used
-  anywhere.
+      iex> Pinklock.with_lock(:sentinel, "lock_key", fn msg -> msg end)
+
+  Defaults to using RedixSentinel for commands but can be convinced to use Redix
+  instead by passing it in as the client:
+
+      iex> Pinklock.with_lock({Redix, pid}, "lock_key", fn msg -> msg end)
+
   """
+
+  def with_lock(client, lock_key, handler, opts \\ [])
+
+  @spec with_lock({module(), pid() | atom()}, String.t(), function(), keyword()) :: :ok
+  def with_lock({client, pid}, lock_key, handler, opts) do
+    with_lock(pid, lock_key, handler, opts ++ [client: client])
+  end
+
   @spec with_lock(pid() | atom(), String.t(), function(), keyword()) :: :ok
-  def with_lock(sentinel, lock_key, handler, opts \\ []) do
+  def with_lock(pid, lock_key, handler, opts) do
     ttl = Keyword.get(opts, :ttl, @default_ttl)
+    client = Keyword.get(opts, :client, RedixSentinel)
 
     # Generate a timestamp after which it will expire.
     #
@@ -24,25 +37,17 @@ defmodule Pinklock do
     expiry = :os.system_time(:millisecond) + ttl * 10_000
 
     # We don't need a full-fat redlock for something this minor.
-    {:ok, res} =
-      RedixSentinel.command(
-        sentinel,
-        ["SETNX", lock_key, expiry]
-      )
+    {:ok, res} = apply(client, :command, [pid, ["SETNX", lock_key, expiry]])
 
     case res do
       1 ->
-        {:ok, _res} =
-          RedixSentinel.command(
-            sentinel,
-            ["EXPIRE", lock_key, ttl]
-          )
+        {:ok, _res} = apply(client, :command, [pid, ["EXPIRE", lock_key, ttl]])
 
         # Now that we have a lock, start work.
         handler.()
 
         # Finally, clean up the lock.
-        RedixSentinel.command(sentinel, ["DEL", lock_key])
+        client.command(pid, ["DEL", lock_key])
 
       0 ->
         # We do not have the lock. Check to see if the current lock has gone
@@ -50,30 +55,23 @@ defmodule Pinklock do
         # this case is only here to recover from the very specific and very rare
         # situation in which we've created the lock and then lost the connection
         # before setting the expiry.
-        {:ok, res} =
-          RedixSentinel.command(
-            sentinel,
-            ["GET", lock_key]
-          )
+        {:ok, res} = apply(client, :command, [pid, ["GET", lock_key]])
 
         # If the key was expired between the time we don't get the lock from
         # the setnx call and when fetching the lock from redis again, this will
         # be nil. So we shall run it again.
         case res do
           nil ->
-            with_lock(sentinel, lock_key, handler)
+            with_lock(pid, lock_key, handler)
 
           _ ->
             saved_expiry = String.to_integer(res)
 
             if saved_expiry < :os.system_time(:millisecond) do
-              RedixSentinel.command(
-                sentinel,
-                ["DEL", lock_key]
-              )
+              apply(client, :command, [pid, ["DEL", lock_key]])
 
               # Now run again with the same params
-              with_lock(sentinel, lock_key, handler)
+              with_lock(pid, lock_key, handler)
             end
         end
     end

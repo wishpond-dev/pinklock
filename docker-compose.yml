@@ -12,9 +12,9 @@ services:
     environment:
       - SENTINEL_HOSTS=sentinel
       - SENTINEL_NAME=panda
+      - REDIS_HOST=redis
     command: ["/bin/bash", "-c", "apt update && apt -y install inotify-tools && mix local.hex --force && mix do deps.get, test.watch"]
 
-  # Relies on the release candidate, not currently available as a standard image.
   redis:
     image: redis:alpine
 

@@ -1,13 +1,12 @@
 defmodule PinklockTest do
-  use ExUnit.Case
-  use ExUnit.Case
+  use ExUnit.Case, async: false
 
   describe "with_lock/3" do
     @lock_key "test_lock_key"
 
     @tag :integration
     test "it should get the lock and set expiry, run the callback, then clean the lock up" do
-      {:ok, sentinel} = Redis.start_link()
+      {:ok, sentinel} = Sentinel.start_link()
       pid = self()
 
       # If the lock exist that will mess with our test so delete it now.
@@ -64,7 +63,7 @@ defmodule PinklockTest do
 
     @tag :integration
     test "it should not clean up a non-expired lock without an expiry" do
-      {:ok, sentinel} = Redis.start_link()
+      {:ok, sentinel} = Sentinel.start_link()
       pid = self()
 
       # If the lock exist that will mess with our test so delete it now.
@@ -83,7 +82,7 @@ defmodule PinklockTest do
 
     @tag :integration
     test "it should clean up an expired lock without an expiry" do
-      {:ok, sentinel} = Redis.start_link()
+      {:ok, sentinel} = Sentinel.start_link()
       pid = self()
 
       # If the lock exist that will mess with our test so delete it now.
@@ -93,7 +92,23 @@ defmodule PinklockTest do
       RedixSentinel.command(sentinel, ["SET", @lock_key, :os.system_time(:millisecond) - 10_000])
 
       # Attempt and fail to get the lock.
-      Pinklock.with_lock(sentinel, @lock_key, fn ->
+      Pinklock.with_lock({RedixSentinel, sentinel}, @lock_key, fn ->
+        send(pid, {:run})
+      end)
+
+      assert_received {:run}
+    end
+
+    @tag :integration
+    test "it should work with redix as well" do
+      {:ok, redis} = Redis.start_link()
+      pid = self()
+
+      # If the lock exist that will mess with our test so delete it now.
+      Redix.command(redis, ["DEL", @lock_key])
+
+      # Attempt and fail to get the lock.
+      Pinklock.with_lock({Redix, redis}, @lock_key, fn ->
         send(pid, {:run})
       end)
 

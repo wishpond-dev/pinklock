@@ -30,10 +30,14 @@ use Mix.Config
 #     import_config "#{Mix.env}.exs"
 
 if Mix.env() == :test do
-  config :pinklock, :redis,
+  config :pinklock, :sentinel,
     sentinels:
       (System.get_env("SENTINEL_HOSTS") || "localhost")
       |> String.split(",")
       |> Enum.map(&[host: &1, port: 26379]),
     group: System.get_env("SENTINEL_NAME") || "panda"
+
+  config :pinklock, :redis,
+    host: System.get_env("REDIS_HOST") || "localhost",
+    port: 6379
 end
